@@ -1,0 +1,65 @@
+name: Update Kalshi props
+
+on:
+  schedule:
+    # every 15 minutes, 7am to midnight ET (cron is UTC; covers both EDT and EST)
+    - cron: "4,19,34,49 11-23 * * *"
+    - cron: "4,19,34,49 0-4 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: kalshi-props
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Pull Kalshi markets and build data
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}   # optional; only needed with a custom Pages domain
+        run: python scripts/pull.py --out site --archive archive
+
+      - name: Commit finished slates to archive/
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add archive
+          if ! git diff --cached --quiet; then
+            git commit -m "archive: $(ls -t archive/*.json | head -1 | xargs basename .json)"
+            git pull --rebase --autostash
+            git push
+          fi
+
+      - name: Assemble site
+        run: |
+          cp index.html site/
+          mkdir -p site/archive
+          cp archive/*.json site/archive/ 2>/dev/null || true
+          touch site/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

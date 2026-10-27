@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kalshi NBA Props</title>
+<style>
+:root{
+  --bg:#0f1115;--panel:#161a21;--panel2:#1c212a;--line:#272d38;--text:#e6e9ef;--mute:#8b93a3;
+  --accent:#5aa9ff;--good:#3ecf8e;--warn:#e8b931;--bad:#f0605d;--chip:#232936;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){
+  --bg:#f6f7f9;--panel:#fff;--panel2:#f1f3f6;--line:#e2e5ea;--text:#151a22;--mute:#5f6878;
+  --accent:#1f6fd1;--good:#11905a;--warn:#a87a00;--bad:#c93a37;--chip:#eceff3;}}
+:root[data-theme="light"]{--bg:#f6f7f9;--panel:#fff;--panel2:#f1f3f6;--line:#e2e5ea;--text:#151a22;--mute:#5f6878;
+  --accent:#1f6fd1;--good:#11905a;--warn:#a87a00;--bad:#c93a37;--chip:#eceff3;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);padding:10px 16px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+h1{font-size:16px;margin:0 12px 0 0;letter-spacing:.2px}
+.stamp{font-size:12px;color:var(--mute)}
+.stamp.stale{color:var(--bad);font-weight:600}
+.tabs button{background:none;border:1px solid var(--line);color:var(--mute);padding:5px 11px;border-radius:6px;cursor:pointer;font-size:13px}
+.tabs button.on{color:var(--text);border-color:var(--accent);background:var(--panel2)}
+.ctl{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;align-items:center}
+select,input[type=search],input[type=number]{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-size:13px}
+input[type=number]{width:64px}
+label{font-size:12px;color:var(--mute);display:flex;gap:5px;align-items:center}
+main{padding:12px 16px 40px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:12px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.kpi b{display:block;font:600 18px var(--mono)}
+.kpi span{font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.4px}
+.games{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.game{background:var(--chip);border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer;border:1px solid transparent}
+.game.on{border-color:var(--accent)}
+.game em{font-style:normal;color:var(--mute);font-family:var(--mono)}
+.wrap{overflow:auto;border:1px solid var(--line);border-radius:8px;background:var(--panel);max-height:calc(100vh - 230px)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:5px 8px;border-bottom:1px solid var(--line);white-space:nowrap;text-align:right}
+th{position:sticky;top:0;background:var(--panel2);color:var(--mute);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.3px;cursor:pointer;user-select:none;z-index:1}
+th.l,td.l{text-align:left}
+td{font-family:var(--mono)}
+td.l{font-family:inherit}
+tr:hover td{background:var(--panel2)}
+tr.click{cursor:pointer}
+.sp-g{color:var(--good)}.sp-y{color:var(--warn)}.sp-r{color:var(--bad)}
+.up{color:var(--good)}.dn{color:var(--bad)}.mute{color:var(--mute)}
+.tag{display:inline-block;font:600 10px var(--mono);padding:1px 5px;border-radius:4px;background:var(--chip);color:var(--mute);margin-left:4px}
+.tag.A{color:var(--good)}.tag.B{color:var(--warn)}.tag.C{color:var(--bad)}
+.note{font-size:12px;color:var(--mute);margin:10px 2px}
+.err{background:color-mix(in srgb,var(--bad) 15%,transparent);border:1px solid var(--bad);border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:12px}
+#drawer{position:fixed;right:0;top:0;bottom:0;width:min(520px,100%);background:var(--panel);border-left:1px solid var(--line);transform:translateX(100%);transition:transform .18s;z-index:10;overflow:auto;padding:14px 16px}
+#drawer.open{transform:none}
+#drawer h2{font-size:16px;margin:0 0 4px}
+#drawer .x{float:right;background:none;border:1px solid var(--line);color:var(--text);border-radius:6px;cursor:pointer;padding:2px 8px}
+#drawer h3{font-size:12px;color:var(--mute);text-transform:uppercase;margin:16px 0 6px}
+svg.spark{display:block;width:100%;height:90px;background:var(--panel2);border-radius:6px}
+.btn{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 10px;cursor:pointer;font-size:13px}
+@media (max-width:640px){header{position:static;padding:8px 10px}main{padding:10px}.wrap{max-height:none}}
+</style>
+</head>
+<body>
+<header>
+  <div class="row">
+    <h1>Kalshi NBA Props</h1>
+    <div class="tabs row">
+      <button data-v="markets" class="on">Markets</button>
+      <button data-v="proj">Projections</button>
+      <button data-v="movers">Movers</button>
+    </div>
+    <span id="stamp" class="stamp"></span>
+    <span style="flex:1"></span>
+    <button class="btn" id="theme" title="Toggle theme">Theme</button>
+  </div>
+  <div class="ctl">
+    <select id="date"></select>
+    <select id="stat"><option value="">All stats</option></select>
+    <input id="q" type="search" placeholder="Player or team">
+    <label>Max spread <input id="maxsp" type="number" min="1" max="99" value="99"></label>
+    <label>Min vol <input id="minvol" type="number" min="0" value="0"></label>
+    <label><input id="twoside" type="checkbox"> Two-sided only</label>
+    <button class="btn" id="csv">Export CSV</button>
+  </div>
+</header>
+<main>
+  <div id="errs"></div>
+  <div class="kpis" id="kpis"></div>
+  <div class="games" id="games"></div>
+  <div class="wrap"><table id="tbl"><thead></thead><tbody></tbody></table></div>
+  <p class="note" id="note"></p>
+</main>
+<aside id="drawer"></aside>
+
+<script>
+const STAT_LABEL={pts:'PTS',reb:'REB',ast:'AST',threes:'3PM',stl:'STL',blk:'BLK',dd:'DD',td:'TD',pra:'PRA',pr:'P+R',pa:'P+A',ra:'R+A',stk:'STL+BLK'};
+const S={view:'markets',latest:null,index:null,hist:{},archive:{},game:'',sort:{markets:['vol',-1],proj:['dk',-1],movers:['absd',-1]}};
+const $=id=>document.getElementById(id);
+const fmt=(v,d=1)=>v==null||Number.isNaN(v)?'':Number(v).toFixed(d);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const spClass=s=>s==null?'mute':s<=3?'sp-g':s<=8?'sp-y':'sp-r';
+const money=v=>v==null?'':v>=1000?'$'+(v/1000).toFixed(1)+'k':'$'+Math.round(v);
+
+try{const t=localStorage.getItem('kp-theme');if(t)document.documentElement.dataset.theme=t}catch(e){}
+$('theme').onclick=()=>{const r=document.documentElement;const cur=r.dataset.theme||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');
+  r.dataset.theme=cur==='light'?'dark':'light';try{localStorage.setItem('kp-theme',r.dataset.theme)}catch(e){}};
+
+async function getJSON(p){const r=await fetch(p+(p.includes('?')?'&':'?')+'t='+Date.now());if(!r.ok)throw new Error(p+' '+r.status);return r.json()}
+
+async function load(first){
+  try{
+    const [latest,index]=await Promise.all([getJSON('data/latest.json'),getJSON('data/index.json').catch(()=>({live_dates:[],archive_dates:[]}))]);
+    S.latest=latest;S.index=index;S.hist={};
+  }catch(e){$('errs').innerHTML=`<div class="err">Could not load data: ${esc(e.message)}</div>`;return}
+  if(first)buildDateMenu();else refreshDateMenu();
+  await ensureDate();render();
+}
+
+function allDates(){
+  const live=new Set([...(S.latest.dates||[]),...(S.index.live_dates||[])]);
+  const arch=(S.index.archive_dates||[]).filter(d=>!live.has(d));
+  return {live:[...live].sort(),arch:arch.sort().reverse()};
+}
+function buildDateMenu(){
+  const {live,arch}=allDates();const sel=$('date');sel.innerHTML='';
+  live.forEach(d=>sel.add(new Option(d+'  live',d)));
+  arch.forEach(d=>sel.add(new Option(d+'  final','A:'+d)));
+  const today=new Date().toLocaleDateString('en-CA',{timeZone:'America/New_York'});
+  sel.value=live.includes(today)?today:(live[0]||(arch[0]?'A:'+arch[0]:''));
+}
+function refreshDateMenu(){const v=$('date').value;buildDateMenu();if([...$('date').options].some(o=>o.value===v))$('date').value=v}
+
+async function ensureDate(){
+  const v=$('date').value;if(!v)return;
+  if(v.startsWith('A:')){const d=v.slice(2);if(!S.archive[d])S.archive[d]=await getJSON('archive/'+d+'.json').catch(()=>null);return}
+  if(!S.hist[v])S.hist[v]=await getJSON('data/history/'+v+'.json').catch(()=>null);
+}
+
+// unify live and archived data into the same row shapes
+function dataset(){
+  const v=$('date').value;
+  if(v.startsWith('A:')){
+    const a=S.archive[v.slice(2)];if(!a)return{markets:[],proj:[],archived:true};
+    const markets=a.markets.map(m=>({...m,bid:m.close_bid,ask:m.close_ask,vol:m.volume,vol24:null,bid_sz:null,ask_sz:null,depth_bid:null,depth_ask:null,
+      date:a.date,dmid:m.open_mid!=null&&m.close_mid!=null?m.close_mid-m.open_mid:null}));
+    return{markets,proj:a.projections||[],archived:true,meta:a};
+  }
+  const h=S.hist[v];
+  const markets=S.latest.markets.filter(m=>m.date===v).map(m=>{
+    let dmid=null;const s=h&&h.m[m.ticker];
+    if(s&&s.length){const f=s[0];if(f[1]!=null&&f[2]!=null&&m.bid!=null&&m.ask!=null)dmid=(m.bid+m.ask)/2-(f[1]+f[2])/2}
+    return{...m,dmid};});
+  const proj=S.latest.projections.filter(r=>r.date===v).map(r=>{
+    let ddk=null;const s=h&&h.p[norm(r.player)];if(s&&s.length)ddk=r.dk-s[0][1];return{...r,ddk}});
+  return{markets,proj,archived:false};
+}
+function norm(n){return n.normalize('NFKD').replace(/[̀-ͯ]/g,'').replace(/\b(jr|sr|ii|iii|iv)\.?$/i,'').toLowerCase().replace(/[^a-z]/g,'')}
+
+function filtered(ms){
+  const q=$('q').value.trim().toLowerCase(),st=$('stat').value,mx=+$('maxsp').value||99,mv=+$('minvol').value||0,two=$('twoside').checked;
+  return ms.filter(m=>{
+    if(S.game&&m.game!==S.game)return false;
+    if(st&&m.stat!==st)return false;
+    if(q&&!(m.player.toLowerCase().includes(q)||(m.team||'').toLowerCase().includes(q)))return false;
+    const sp=m.bid!=null&&m.ask!=null?m.ask-m.bid:null;
+    if(two&&!(m.bid>0&&m.ask<100))return false;
+    if(sp!=null&&sp>mx)return false;
+    if((m.vol||0)<mv)return false;
+    return true;});
+}
+
+function render(){
+  if(!S.latest)return;
+  const ds=dataset();
+  const age=(Date.now()-Date.parse(S.latest.generated_at))/60000;
+  const st=$('stamp');st.textContent=ds.archived?`Final pregame snapshot ${ds.meta&&ds.meta.last?new Date(ds.meta.last).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):''}`:`Updated ${age<1?'just now':Math.round(age)+' min ago'} (${new Date(S.latest.generated_at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})})`;
+  st.className='stamp'+(!ds.archived&&age>60?' stale':'');
+  const e=[...(S.latest.errors||[])];
+  $('errs').innerHTML=e.length?`<div class="err">${e.map(esc).join('<br>')}</div>`:'';
+  // stat menu
+  const stats=[...new Set(ds.markets.map(m=>m.stat))];const sel=$('stat'),cur=sel.value;
+  sel.innerHTML='<option value="">All stats</option>'+Object.keys(STAT_LABEL).filter(s=>stats.includes(s)).map(s=>`<option value="${s}">${STAT_LABEL[s]}</option>`).join('');sel.value=stats.includes(cur)?cur:'';
+  kpis(ds);games(ds);
+  if(S.view==='markets')renderMarkets(ds);else if(S.view==='proj')renderProj(ds);else renderMovers(ds);
+}
+
+function kpis(ds){
+  const ms=filtered(ds.markets);const two=ms.filter(m=>m.bid>0&&m.ask<100&&m.bid!=null);
+  const sps=two.map(m=>m.ask-m.bid).sort((a,b)=>a-b);
+  const med=sps.length?sps[Math.floor(sps.length/2)]:null;
+  const tight=sps.length?Math.round(100*sps.filter(s=>s<=3).length/sps.length):null;
+  const vol=ms.reduce((a,m)=>a+(m.vol||0),0);
+  const depth=ms.reduce((a,m)=>a+(m.depth_bid||0)+(m.depth_ask||0),0);
+  $('kpis').innerHTML=[[ms.length,'Markets'],[two.length,'Two-sided'],[med==null?'':med+'¢','Median spread'],[tight==null?'':tight+'%','Spread 3¢ or less'],
+    [Math.round(vol).toLocaleString(),'Contracts traded'],[ds.archived?'':money(depth),`Depth within ${S.latest.settings?.depth_band_c||5}¢`],[ds.proj.length,'Players projected']]
+    .map(([v,l])=>`<div class="kpi"><b>${v}</b><span>${l}</span></div>`).join('');
+}
+function gameInfo(g){return (S.latest.games||[]).find(x=>x.game===g)}
+function tipLabel(gi){
+  if(!gi)return '';
+  if(gi.state==='post')return 'final';
+  if(gi.started)return 'in game';
+  return gi.tip?new Date(gi.tip).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}):'';
+}
+function games(ds){
+  const g={};ds.markets.forEach(m=>{if(!m.game)return;g[m.game]=g[m.game]||{n:0,v:0};g[m.game].n++;g[m.game].v+=m.vol||0});
+  const order=Object.keys(g).sort((a,b)=>String(gameInfo(a)?.tip||a).localeCompare(String(gameInfo(b)?.tip||b)));
+  $('games').innerHTML=`<span class="game ${S.game?'':'on'}" data-g="">All games</span>`+order.map(k=>{const x=g[k],gi=ds.archived?null:gameInfo(k),tl=tipLabel(gi);
+    return `<span class="game ${S.game===k?'on':''}" data-g="${k}">${k}${tl?` <b class="${gi.started?'dn':''}" style="font-weight:600">${tl}</b>`:''} <em>${x.n} mkts · ${Math.round(x.v).toLocaleString()} vol</em></span>`}).join('');
+  $('games').querySelectorAll('.game').forEach(el=>el.onclick=()=>{S.game=el.dataset.g;render()});
+}
+
+function table(cols,rows,key,onclick){
+  const [sk,sd]=S.sort[key];
+  const col=cols.find(c=>c.k===sk)||cols[0];
+  rows.sort((a,b)=>{const x=col.v(a),y=col.v(b);if(x==null&&y==null)return 0;if(x==null)return 1;if(y==null)return -1;return (x>y?1:x<y?-1:0)*sd});
+  const t=$('tbl');
+  t.tHead.innerHTML='<tr>'+cols.map(c=>`<th class="${c.l?'l':''}" data-k="${c.k}" title="${esc(c.tip||'')}">${c.h}${c.k===sk?(sd>0?' ▲':' ▼'):''}</th>`).join('')+'</tr>';
+  t.tHead.querySelectorAll('th').forEach(th=>th.onclick=()=>{const k=th.dataset.k;S.sort[key]=[k,S.sort[key][0]===k?-S.sort[key][1]:-1];render()});
+  t.tBodies[0].innerHTML=rows.map((r,i)=>`<tr class="${onclick?'click':''}" data-i="${i}">`+cols.map(c=>`<td class="${c.l?'l ':''}${c.cls?c.cls(r):''}">${c.f?c.f(r):esc(c.v(r))}</td>`).join('')+'</tr>').join('')||`<tr><td class="l mute" colspan="${cols.length}">No rows for these filters.</td></tr>`;
+  if(onclick)t.tBodies[0].querySelectorAll('tr.click').forEach(tr=>tr.onclick=()=>onclick(rows[+tr.dataset.i]));
+  S.rows=rows;S.cols=cols;
+}
+
+const mid=m=>m.bid!=null&&m.ask!=null?(m.bid+m.ask)/2:null;
+const spr=m=>m.bid!=null&&m.ask!=null?m.ask-m.bid:null;
+const thr=m=>m.line==null?'':(m.stat==='dd'||m.stat==='td'?'Yes':Math.round(m.line+0.5)+'+');
+
+function renderMarkets(ds){
+  const cols=[
+    {k:'player',h:'Player',l:1,v:m=>m.player,f:m=>`${esc(m.player)} <span class="mute">${esc(m.team||'')}</span>${m.started?'<span class="tag" title="Game has tipped. Prices are in-game and do not feed history or projections.">in game</span>':''}`},
+    {k:'game',h:'Game',l:1,v:m=>m.game},
+    {k:'stat',h:'Stat',l:1,v:m=>STAT_LABEL[m.stat]||m.stat},
+    {k:'line',h:'Line',v:m=>m.line,f:thr},
+    {k:'bid',h:'Bid',v:m=>m.bid},
+    {k:'ask',h:'Ask',v:m=>m.ask},
+    {k:'mid',h:'Mid',v:mid,f:m=>fmt(mid(m),1)},
+    {k:'spread',h:'Spread',v:spr,cls:m=>spClass(spr(m)),f:m=>spr(m)==null?'':spr(m)+'¢',tip:'Ask minus bid, cents'},
+    {k:'bid_sz',h:'Bid sz',v:m=>m.bid_sz,f:m=>m.bid_sz==null?'':Math.round(m.bid_sz),tip:'Contracts at best bid'},
+    {k:'ask_sz',h:'Ask sz',v:m=>m.ask_sz,f:m=>m.ask_sz==null?'':Math.round(m.ask_sz),tip:'Contracts at best ask'},
+    {k:'depth_bid',h:'Depth bid',v:m=>m.depth_bid,f:m=>money(m.depth_bid),tip:'Dollars resting on the YES bid side within the depth band of mid'},
+    {k:'depth_ask',h:'Depth ask',v:m=>m.depth_ask,f:m=>money(m.depth_ask),tip:'Dollars offered on YES within the depth band of mid'},
+    {k:'vol',h:'Vol',v:m=>m.vol,f:m=>Math.round(m.vol||0).toLocaleString()},
+    {k:'vol24',h:'24h',v:m=>m.vol24,f:m=>m.vol24==null?'':Math.round(m.vol24).toLocaleString()},
+    {k:'dmid',h:'Mid chg',v:m=>m.dmid,cls:m=>m.dmid>0?'up':m.dmid<0?'dn':'mute',f:m=>m.dmid?(m.dmid>0?'+':'')+fmt(m.dmid,1):'',tip:'Change in mid since first snapshot of the day'},
+  ];
+  table(cols,filtered(ds.markets),'markets',m=>openMarket(m,ds));
+  $('note').textContent=`Spread color: 3¢ or less green, 4 to 8¢ yellow, wider red. Prices are YES cents for "N or more". Click a row for its intraday chart.`;
+}
+
+function renderProj(ds){
+  const q=$('q').value.trim().toLowerCase();
+  const rows=ds.proj.filter(r=>(!S.game||r.game===S.game)&&(!q||r.player.toLowerCase().includes(q)||(r.team||'').toLowerCase().includes(q)));
+  const cols=[
+    {k:'player',h:'Player',l:1,v:r=>r.player,f:r=>`${esc(r.player)} <span class="mute">${esc(r.team||'')}</span><span class="tag ${r.tier}" title="A: all core markets priced. B: one of REB/AST/3PM defaulted. C: two or more defaulted.">${r.tier}</span>${r.thin?'<span class="tag" title="No points market near 50% with a spread of 6¢ or less">thin</span>':''}${r.locked?'<span class="tag" title="Game has tipped. Showing the last pregame projection.">locked</span>':''}`},
+    {k:'pos',h:'Pos',l:1,v:r=>r.pos},
+    {k:'salary',h:'Sal',v:r=>r.salary,f:r=>r.salary?r.salary.toLocaleString():''},
+    {k:'dk',h:'DK',v:r=>r.dk,f:r=>fmt(r.dk,1)},
+    {k:'value',h:'Per $1k',v:r=>r.value,f:r=>fmt(r.value,2)},
+    {k:'ddk',h:'DK chg',v:r=>r.ddk,cls:r=>r.ddk>0.05?'up':r.ddk<-0.05?'dn':'mute',f:r=>r.ddk&&Math.abs(r.ddk)>=0.05?(r.ddk>0?'+':'')+fmt(r.ddk,1):''},
+    {k:'pts',h:'PTS',v:r=>r.pts,f:r=>fmt(r.pts,1)},
+    {k:'reb',h:'REB',v:r=>r.reb,f:r=>fmt(r.reb,1),cls:r=>flagCls(r,'reb')},
+    {k:'ast',h:'AST',v:r=>r.ast,f:r=>fmt(r.ast,1),cls:r=>flagCls(r,'ast')},
+    {k:'threes',h:'3PM',v:r=>r.threes,f:r=>fmt(r.threes,1),cls:r=>flagCls(r,'threes')},
+    {k:'stl',h:'STL',v:r=>r.stl,f:r=>fmt(r.stl,2),cls:r=>flagCls(r,'stl')},
+    {k:'blk',h:'BLK',v:r=>r.blk,f:r=>fmt(r.blk,2),cls:r=>flagCls(r,'blk')},
+    {k:'tov',h:'TOV',v:r=>r.tov,f:r=>fmt(r.tov,1),cls:()=>'mute'},
+    {k:'p_dd',h:'DD%',v:r=>r.p_dd,f:r=>Math.round(r.p_dd*100)},
+    {k:'p_td',h:'TD%',v:r=>r.p_td,f:r=>fmt(r.p_td*100,1)},
+    {k:'n_mkts',h:'Mkts',v:r=>r.n_mkts},
+    {k:'pts_spread',h:'Best PTS sprd',tip:'Tightest points rung between 15% and 85%',v:r=>r.pts_spread,cls:r=>spClass(r.pts_spread),f:r=>fmt(r.pts_spread,1)+'¢'},
+  ];
+  table(cols,rows,'proj',r=>openPlayer(r,ds));
+  $('note').textContent=`Kalshi-only fit: each stat mean is fit to every ladder rung with spread 20¢ or less, weighted by tightness. Gray values are defaults or estimates (no market). TOV has no market and is estimated from PTS and AST. DK scoring with DD +1.5 and TD +3 stacked. Salaries: ${S.latest.salaries||'none'}.`;
+}
+const flagCls=(r,s)=>(r.flags||[]).some(f=>f.startsWith(s+' default'))?'mute':'';
+
+function renderMovers(ds){
+  const rows=filtered(ds.markets).filter(m=>m.dmid!=null&&m.dmid!==0).map(m=>({...m,absd:Math.abs(m.dmid)}));
+  const cols=[
+    {k:'player',h:'Player',l:1,v:m=>m.player,f:m=>`${esc(m.player)} <span class="mute">${esc(m.team||'')}</span>`},
+    {k:'stat',h:'Stat',l:1,v:m=>STAT_LABEL[m.stat]||m.stat},
+    {k:'line',h:'Line',v:m=>m.line,f:thr},
+    {k:'open',h:'Open mid',v:m=>mid(m)-m.dmid,f:m=>fmt(mid(m)-m.dmid,1)},
+    {k:'mid',h:'Now mid',v:mid,f:m=>fmt(mid(m),1)},
+    {k:'absd',h:'Move',v:m=>m.absd,cls:m=>m.dmid>0?'up':'dn',f:m=>(m.dmid>0?'+':'')+fmt(m.dmid,1)+'¢'},
+    {k:'spread',h:'Spread',v:spr,cls:m=>spClass(spr(m)),f:m=>spr(m)==null?'':spr(m)+'¢'},
+    {k:'vol',h:'Vol',v:m=>m.vol,f:m=>Math.round(m.vol||0).toLocaleString()},
+  ];
+  table(cols,rows,'movers',m=>openMarket(m,ds));
+  $('note').textContent='Mid moves since the first snapshot of the day. Moves on wide markets (red spread) are mostly quote noise.';
+}
+
+// ---------- drawer
+function spark(points,{min,max,band}={}){
+  if(!points.length)return '<p class="note">No history yet.</p>';
+  const W=480,H=90,P=6;const xs=points.map(p=>p[0]);const ys=points.flatMap(p=>band?[p[1],p[2]]:[p[1]]).filter(v=>v!=null);
+  const x0=Math.min(...xs),x1=Math.max(...xs)||1,y0=min??Math.min(...ys),y1=max??Math.max(...ys);
+  const X=x=>P+(x1===x0?0.5:(x-x0)/(x1-x0))*(W-2*P),Y=y=>H-P-(y1===y0?0.5:(y-y0)/(y1-y0))*(H-2*P);
+  const step=(i)=>points.map(p=>p[i]==null?null:[X(p[0]),Y(p[i])]).filter(Boolean);
+  const path=pts=>pts.map((p,j)=>(j?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
+  let g='';
+  if(band){const lo=step(1),hi=step(2);
+    g+=`<path d="${path(hi)} ${lo.reverse().map(p=>'L'+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ')} Z" fill="var(--accent)" opacity=".18"/>`;
+    g+=`<path d="${path(points.filter(p=>p[1]!=null&&p[2]!=null).map(p=>[X(p[0]),Y((p[1]+p[2])/2)]))}" stroke="var(--accent)" fill="none" stroke-width="1.8"/>`;
+  }else g+=`<path d="${path(step(1))}" stroke="var(--accent)" fill="none" stroke-width="1.8"/>`;
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${g}<text x="${W-P}" y="12" text-anchor="end" font-size="10" fill="var(--mute)">${fmt(y1,1)}</text><text x="${W-P}" y="${H-4}" text-anchor="end" font-size="10" fill="var(--mute)">${fmt(y0,1)}</text></svg>`;
+}
+function stepHist(series,nT){ // carry last value forward across snapshots
+  const out=[];let j=0,cur=null;for(let t=0;t<nT;t++){while(j<series.length&&series[j][0]<=t){cur=series[j];j++}if(cur)out.push([t,...cur.slice(1)])}return out;
+}
+function openMarket(m,ds){
+  const h=ds.archived?null:S.hist[$('date').value];
+  const s=h&&h.m[m.ticker];const pts=s?stepHist(s,h.t.length):[];
+  const t0=h&&h.t[0],t1=h&&h.t[h.t.length-1];
+  $('drawer').innerHTML=`<button class="x" onclick="closeD()">Close</button><h2>${esc(m.player)} ${STAT_LABEL[m.stat]||m.stat} ${thr(m)}</h2>
+    <div class="mute">${esc(m.game)} · ${esc(m.ticker)}</div>
+    <h3>Bid/ask band and mid, cents</h3>${ds.archived?'<p class="note">Intraday history is kept for live dates only. Archive keeps open and close.</p>':spark(pts,{band:true,
+      min:Math.max(0,Math.min(...pts.map(p=>p[1]??99))-5),max:Math.min(100,Math.max(...pts.map(p=>p[2]??1))+5)})}
+    ${t0?`<div class="note">${new Date(t0).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})} to ${new Date(t1).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}, ${h.t.length} snapshots</div>`:''}
+    <h3>Ladder</h3>${ladder(ds,m.player,m.stat)}`;
+  $('drawer').classList.add('open');
+}
+function openPlayer(r,ds){
+  const h=ds.archived?null:S.hist[$('date').value];
+  const s=h&&h.p[norm(r.player)];const pts=s?stepHist(s,h.t.length):[];
+  const stats=[...new Set(ds.markets.filter(m=>m.player===r.player).map(m=>m.stat))];
+  $('drawer').innerHTML=`<button class="x" onclick="closeD()">Close</button><h2>${esc(r.player)}</h2>
+    <div class="mute">${esc(r.team)} ${esc(r.pos||'')} · ${esc(r.game)} ${r.salary?'· $'+r.salary.toLocaleString():''}</div>
+    <h3>DK projection over the day</h3>${ds.archived?'<p class="note">Final projection only.</p>':spark(pts)}
+    <h3>Flags</h3><div class="note">${(r.flags||[]).map(esc).join(', ')||'none'}</div>
+    ${Object.keys(STAT_LABEL).filter(s=>stats.includes(s)).map(s=>`<h3>${STAT_LABEL[s]}</h3>${ladder(ds,r.player,s)}`).join('')}`;
+  $('drawer').classList.add('open');
+}
+function ladder(ds,player,stat){
+  const ms=ds.markets.filter(m=>m.player===player&&m.stat===stat).sort((a,b)=>(a.line??0)-(b.line??0));
+  return `<table><thead><tr><th class="l">Line</th><th>Bid</th><th>Ask</th><th>Mid</th><th>Spread</th><th>Vol</th></tr></thead><tbody>`+
+    ms.map(m=>`<tr><td class="l">${thr(m)}</td><td>${m.bid??''}</td><td>${m.ask??''}</td><td>${fmt(mid(m),1)}</td><td class="${spClass(spr(m))}">${spr(m)??''}¢</td><td>${Math.round(m.vol||0).toLocaleString()}</td></tr>`).join('')+'</tbody></table>';
+}
+function closeD(){$('drawer').classList.remove('open')}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeD()});
+
+// ---------- export
+$('csv').onclick=()=>{
+  if(!S.rows)return;const cols=S.cols;
+  const strip=s=>String(s).replace(/<[^>]*>/g,'').replace(/&amp;/g,'&').trim();
+  let lines;
+  if(S.view==='proj'){
+    lines=[['Name','ID','Team','Pos','Salary','DK_Proj','Value','PTS','REB','AST','3PM','STL','BLK','TOV','P_DD','P_TD','Tier','Flags'].join(',')]
+      .concat(S.rows.map(r=>[r.player,r.dk_id??'',r.team,r.pos,r.salary??'',r.dk,r.value??'',r.pts,r.reb,r.ast,r.threes,r.stl,r.blk,r.tov,r.p_dd,r.p_td,r.tier,(r.flags||[]).join('; ')].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')));
+  }else{
+    lines=[cols.map(c=>c.h).join(',')].concat(S.rows.map(r=>cols.map(c=>`"${strip(c.f?c.f(r):c.v(r)??'').replace(/"/g,'""')}"`).join(',')));
+  }
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([lines.join('\n')],{type:'text/csv'}));
+  a.download=`kalshi_${S.view}_${$('date').value.replace('A:','')}.csv`;a.click();
+};
+
+// ---------- wiring
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x===b));S.view=b.dataset.v;render()});
+['stat','q','maxsp','minvol','twoside'].forEach(id=>$(id).addEventListener('input',render));
+$('date').onchange=async()=>{S.game='';await ensureDate();render()};
+load(true);
+setInterval(()=>load(false),5*60*1000);       // pull fresh data every 5 minutes
+setInterval(()=>{if(S.latest)render()},60*1000); // keep the "updated X min ago" honest
+</script>
+</body>
+</html>
