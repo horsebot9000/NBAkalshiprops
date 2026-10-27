@@ -214,7 +214,132 @@ def poisson_binomial_at_least(ps, n):
     return sum(dist[n:])
 
 
-def build_projections(markets, salaries):
+# ---------------------------------------------------------------- season stats (fallback rates)
+DKW = {"pts": 1.0, "reb": 1.25, "ast": 1.5, "threes": 0.5, "stl": 2.0, "blk": 2.0}
+RATE_STATS = ["pts", "reb", "ast", "threes", "stl", "blk", "tov"]
+PRIOR_WEIGHT_MIN = 600   # last season counts as up to this many minutes of evidence
+PRIOR_WEIGHT_GP = 20     # same idea for minutes per game
+POS_FILL_MIN = 300       # low-evidence players are topped up to this many minutes with positional average rates
+IMPLIED_WEIGHT = 0.8     # projected minutes = 80% market-implied, 20% blended season MPG
+MAX_MIN = 44
+
+
+def espn_season(now):
+    d = now.astimezone(ET)
+    return d.year + 1 if d.month >= 8 else d.year
+
+
+def pull_espn_season(season, fixture, errors):
+    url = ("https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/statistics/byathlete"
+           f"?region=us&lang=en&contentorigin=espn&isqualified=false&page=1&limit=1000&season={season}&seasontype=2")
+    try:
+        j = fixture_or_get(fixture, f"espn_stats_{season}.json", url)
+    except Exception as e:
+        errors.append(f"ESPN stats {season}: {e}"); return []
+    if not j:
+        return []
+    names = {c["name"]: c.get("names", []) for c in j.get("categories", [])}
+
+    def val(a, cat, field):
+        c = next((x for x in a.get("categories", []) if x["name"] == cat), None)
+        if not c or field not in names.get(cat, []): return 0.0
+        try: return float(c["values"][names[cat].index(field)] or 0)
+        except (IndexError, TypeError, ValueError): return 0.0
+
+    out = []
+    for a in j.get("athletes", []):
+        ath = a.get("athlete", {})
+        mins = val(a, "general", "minutes")
+        if mins <= 0: continue
+        team = ath.get("teamShortName", "")
+        pos = ((ath.get("position") or {}).get("abbreviation") or "F")[-1:].upper()
+        out.append({"id": str(ath.get("id", "")), "name": ath.get("displayName", ""),
+                    "pos": pos if pos in ("G", "F", "C") else "F",
+                    "team": ESPN_TO_KALSHI.get(team, team), "gp": val(a, "general", "gamesPlayed"), "min": mins,
+                    "tot": {"pts": val(a, "offensive", "points"), "reb": val(a, "general", "rebounds"),
+                            "ast": val(a, "offensive", "assists"),
+                            "threes": val(a, "offensive", "threePointFieldGoalsMade"),
+                            "stl": val(a, "defensive", "steals"), "blk": val(a, "defensive", "blocks"),
+                            "tov": val(a, "offensive", "turnovers")}})
+    return out
+
+
+class Rates:
+    """Per-minute rates blending this season with last season."""
+
+    def __init__(self, cur, prev, season):
+        self.season = season
+        self.cur, self.prev_by_id, self.prev_by_name = {}, {}, {}
+        for r in cur: self.cur.setdefault(norm(r["name"]), []).append(r)
+        for r in prev:
+            self.prev_by_id[r["id"]] = r
+            self.prev_by_name.setdefault(norm(r["name"]), []).append(r)
+        self.n_cur, self.n_prev = len(cur), len(prev)
+        # positional per-minute averages (G/F/C) from last season's rotation players (200+ min);
+        # if last season failed to load, use this season's players with 30+ min
+        base = [r for r in prev if r["min"] >= 200] or [r for r in cur if r["min"] >= 30]
+        pool = {}
+        for r in base:
+            agg = pool.setdefault(r["pos"], {"min": 0.0, **{s: 0.0 for s in RATE_STATS}})
+            agg["min"] += r["min"]
+            for s in RATE_STATS: agg[s] += r["tot"][s]
+        self.pos_rate = {p: {s: a[s] / a["min"] for s in RATE_STATS} for p, a in pool.items() if a["min"] > 0}
+
+    @staticmethod
+    def _pick(cands, team):
+        if not cands: return None
+        if len(cands) == 1: return cands[0]
+        hit = [c for c in cands if c["team"] == team]
+        return hit[0] if len(hit) == 1 else None
+
+    def get(self, key, team):
+        c = self._pick(self.cur.get(key, []), team)
+        p = self.prev_by_id.get(c["id"]) if c else None
+        if p is None:
+            p = self._pick(self.prev_by_name.get(key, []), team)
+        if not c and not p: return None
+        cm, cg = (c["min"], c["gp"]) if c else (0.0, 0.0)
+        w = min(p["min"], PRIOR_WEIGHT_MIN) if p else 0.0
+        posr = self.pos_rate.get((c or p)["pos"])
+        fill = max(0.0, POS_FILL_MIN - (cm + w)) if posr else 0.0
+        rate = {}
+        for s in RATE_STATS:
+            prev_rate = p["tot"][s] / p["min"] if p else 0.0
+            rate[s] = ((c["tot"][s] if c else 0.0) + prev_rate * w + (posr[s] * fill if fill else 0.0)) / (cm + w + fill)
+        wg = min(p["gp"], PRIOR_WEIGHT_GP) if p else 0.0
+        prev_mpg = p["min"] / p["gp"] if p and p["gp"] else 0.0
+        mpg = (cm + prev_mpg * wg) / (cg + wg) if cg + wg else None
+        basis = ("cur+prev" if c and p else "cur only" if c else "prev only") + ("+pos" if fill else "")
+        return {"rate": rate, "mpg": mpg, "basis": basis,
+                "cur_min": cm, "prev_min": p["min"] if p else 0.0}
+
+
+def load_rates(now, fixture, errors):
+    season = espn_season(now)
+    cur = pull_espn_season(season, fixture, errors)
+    prev = pull_espn_season(season - 1, fixture, errors)
+    return Rates(cur, prev, season)
+
+
+def load_minutes(repo_root):
+    """Optional manual minutes: minutes/*.csv with Name,Minutes (date in filename optional)."""
+    mins = {}
+    d = os.path.join(repo_root, "minutes")
+    if not os.path.isdir(d): return mins
+    for fn in os.listdir(d):
+        if not fn.lower().endswith(".csv"): continue
+        m = re.search(r"(\d{4}-\d{2}-\d{2})", fn)
+        date = m.group(1) if m else None
+        for r in csv.DictReader(open(os.path.join(d, fn), encoding="utf-8-sig")):
+            name = r.get("Name") or r.get("name") or r.get("Player") or ""
+            val = r.get("Minutes") or r.get("minutes") or r.get("MIN") or ""
+            try: mins[(date, norm(name))] = float(val)
+            except ValueError: pass
+    return mins
+
+
+def build_projections(markets, salaries, rates=None, manual_min=None):
+    manual_min = manual_min or {}
     groups = {}
     for m in markets:
         key = (m["date"], norm(m["player"]))
@@ -235,29 +360,52 @@ def build_projections(markets, salaries):
         sal = salaries.get((date, key)) or salaries.get((None, key))
         pos = sal["pos"] if sal else ""
         big = "C" in pos
-        mu, flags, src = {}, [], {}
+        mu, flags, src, ssrc = {}, [], {}, {}
         for s in list(SINGLE) + list(COMBO):
             o = g["obs"].get(s)
             if o:
                 mu[s] = fit_mean([(L, p, w) for L, p, w, _ in o], K[s], 70 if s in ("pts", "pra", "pr", "pa") else 20)
                 src[s] = len(o)
-        # fill missing singles from combos before falling back to defaults
+                if s in SINGLE: ssrc[s] = "mkt"
+        # 1) fill missing singles from combo markets
         for s in ("reb", "ast", "stl", "blk"):
             if s in mu: continue
             for c, parts in COMBO.items():
                 if c in mu and s in parts and all(x in mu for x in parts if x != s):
                     v = mu[c] - sum(mu[x] for x in parts if x != s)
                     if v > 0:
-                        mu[s] = v; flags.append(f"{s} from {c}"); break
+                        mu[s] = v; ssrc[s] = "combo"; flags.append(f"{s} from {c}"); break
+        # 2) projected minutes: market-implied from the priced stats, shrunk toward season MPG
+        r = rates.get(key, g["team"]) if rates else None
+        mins, min_src = None, None
+        if (date, key) in manual_min or (None, key) in manual_min:
+            mins = manual_min.get((date, key), manual_min.get((None, key))); min_src = "manual"
+        elif r:
+            priced = [s for s in SINGLE if s in ssrc]
+            den = sum(DKW[s] * r["rate"][s] for s in priced)
+            implied = sum(DKW[s] * mu[s] for s in priced) / den if den > 0 else None
+            if implied is not None:
+                mins = IMPLIED_WEIGHT * implied + (1 - IMPLIED_WEIGHT) * (r["mpg"] or implied)
+                min_src = "implied"
+        if mins is not None:
+            mins = max(0.0, min(MAX_MIN, mins))
+        # 3) still missing: per-minute rate x projected minutes, else positional default
         core_def = 0
         dflt = {"reb": 6.0 if big else 3.5 if pos else 4.5, "ast": 1.6 if big else 1.8,
                 "threes": 0.3 if big else 0.9 if pos else 0.6,
                 "stl": 0.7, "blk": 0.9 if big else 0.5 if "PF" in pos else 0.3 if pos else 0.5}
         for s in SINGLE:
-            if s not in mu:
-                mu[s] = dflt[s]; flags.append(f"{s} default")
-                if s in ("reb", "ast", "threes"): core_def += 1
-        tov = 0.3 + 0.06 * mu["pts"] + 0.17 * mu["ast"]
+            if s in mu: continue
+            if r and mins is not None:
+                mu[s] = max(0.01, r["rate"][s] * mins); ssrc[s] = "rate"
+                flags.append(f"{s} rate x min ({r['basis']})")
+            else:
+                mu[s] = dflt[s]; ssrc[s] = "default"; flags.append(f"{s} default")
+            if s in ("reb", "ast", "threes"): core_def += 1
+        if r and mins is not None:
+            tov = r["rate"]["tov"] * mins; ssrc["tov"] = "rate"
+        else:
+            tov = 0.3 + 0.06 * mu["pts"] + 0.17 * mu["ast"]; ssrc["tov"] = "formula"
         ps10 = [nb_sf(9.5, mu[s], K[s]) for s in ("pts", "reb", "ast", "stl", "blk")]
         pdd, ptd = poisson_binomial_at_least(ps10, 2), poisson_binomial_at_least(ps10, 3)
         if "dd" in g["ddtd"]: pdd = 0.5 * pdd + 0.5 * g["ddtd"]["dd"]; flags.append("dd blended")
@@ -274,6 +422,8 @@ def build_projections(markets, salaries):
             "tov": round(tov, 2), "p_dd": round(pdd, 3), "p_td": round(ptd, 3),
             "dk": round(dk, 2), "value": round(dk / sal["salary"] * 1000, 2) if sal and sal["salary"] else None,
             "tier": "A" if core_def == 0 else "B" if core_def == 1 else "C",
+            "min": round(mins, 1) if mins is not None else None, "min_src": min_src,
+            "mpg": round(r["mpg"], 1) if r and r["mpg"] else None, "src": ssrc,
             "thin": thin, "n_mkts": sum(src.values()),
             "pts_spread": min([sp for _, p, _, sp in pts_obs if 0.15 <= p <= 0.85] or [sp for *_, sp in pts_obs]),
             "flags": flags,
@@ -448,8 +598,10 @@ def main():
                                      "state": g.get("state", "pre" if not m["started"] else "in"),
                                      "started": m["started"]})
     salaries, sal_status = load_salaries(dates, a.repo_root, a.fixture, errors)
+    rates = load_rates(now, a.fixture, errors) if markets else None
+    manual_min = load_minutes(a.repo_root)
     pre = [m for m in markets if not m["started"]]
-    proj_pre = build_projections(pre, salaries)
+    proj_pre = build_projections(pre, salaries, rates, manual_min)
 
     os.makedirs(os.path.join(a.out, "data", "history"), exist_ok=True)
     os.makedirs(a.archive, exist_ok=True)
@@ -496,6 +648,9 @@ def main():
     latest = {"generated_at": ts, "dates": dates, "markets": markets, "projections": proj,
               "games": sorted(games.values(), key=lambda g: (g["date"], g["tip"] or "")),
               "salaries": sal_status, "errors": errors,
+              "stats": (f"ESPN {rates.season - 1}-{str(rates.season)[2:]}: {rates.n_cur} players, "
+                        f"{rates.season - 2}-{str(rates.season - 1)[2:]}: {rates.n_prev} players"
+                        + (f"; manual minutes for {len(manual_min)}" if manual_min else "")) if rates else "",
               "settings": {"max_spread_fit": MAX_SPREAD_FIT, "depth_band_c": int(DEPTH_BAND * 100)}}
     json.dump(latest, open(os.path.join(a.out, "data", "latest.json"), "w"), separators=(",", ":"))
     json.dump({"generated_at": ts, "live_dates": live, "archive_dates": archive_dates},

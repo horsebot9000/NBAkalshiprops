@@ -48,6 +48,7 @@ tr:hover td{background:var(--panel2)}
 tr.click{cursor:pointer}
 .sp-g{color:var(--good)}.sp-y{color:var(--warn)}.sp-r{color:var(--bad)}
 .up{color:var(--good)}.dn{color:var(--bad)}.mute{color:var(--mute)}
+td.est{font-style:italic;color:var(--accent)}
 .tag{display:inline-block;font:600 10px var(--mono);padding:1px 5px;border-radius:4px;background:var(--chip);color:var(--mute);margin-left:4px}
 .tag.A{color:var(--good)}.tag.B{color:var(--warn)}.tag.C{color:var(--bad)}
 .note{font-size:12px;color:var(--mute);margin:10px 2px}
@@ -254,28 +255,32 @@ function renderProj(ds){
   const q=$('q').value.trim().toLowerCase();
   const rows=ds.proj.filter(r=>(!S.game||r.game===S.game)&&(!q||r.player.toLowerCase().includes(q)||(r.team||'').toLowerCase().includes(q)));
   const cols=[
-    {k:'player',h:'Player',l:1,v:r=>r.player,f:r=>`${esc(r.player)} <span class="mute">${esc(r.team||'')}</span><span class="tag ${r.tier}" title="A: all core markets priced. B: one of REB/AST/3PM defaulted. C: two or more defaulted.">${r.tier}</span>${r.thin?'<span class="tag" title="No points market near 50% with a spread of 6¢ or less">thin</span>':''}${r.locked?'<span class="tag" title="Game has tipped. Showing the last pregame projection.">locked</span>':''}`},
+    {k:'player',h:'Player',l:1,v:r=>r.player,f:r=>`${esc(r.player)} <span class="mute">${esc(r.team||'')}</span><span class="tag ${r.tier}" title="A: REB, AST and 3PM all priced on Kalshi. B: one of them is not and comes from rate x minutes. C: two or more are not.">${r.tier}</span>${r.thin?'<span class="tag" title="No points market near 50% with a spread of 6¢ or less">thin</span>':''}${r.locked?'<span class="tag" title="Game has tipped. Showing the last pregame projection.">locked</span>':''}`},
     {k:'pos',h:'Pos',l:1,v:r=>r.pos},
     {k:'salary',h:'Sal',v:r=>r.salary,f:r=>r.salary?r.salary.toLocaleString():''},
     {k:'dk',h:'DK',v:r=>r.dk,f:r=>fmt(r.dk,1)},
     {k:'value',h:'Per $1k',v:r=>r.value,f:r=>fmt(r.value,2)},
     {k:'ddk',h:'DK chg',v:r=>r.ddk,cls:r=>r.ddk>0.05?'up':r.ddk<-0.05?'dn':'mute',f:r=>r.ddk&&Math.abs(r.ddk)>=0.05?(r.ddk>0?'+':'')+fmt(r.ddk,1):''},
+    {k:'min',h:'MIN',v:r=>r.min,f:r=>r.min==null?'':fmt(r.min,1)+(r.min_src==='manual'?'*':''),tip:'Projected minutes. Market-implied (80%) blended with season MPG (20%). * = manual override.'},
+    {k:'mpg',h:'MPG',v:r=>r.mpg,f:r=>fmt(r.mpg,1),cls:()=>'mute',tip:'Season MPG, this season blended with last'},
     {k:'pts',h:'PTS',v:r=>r.pts,f:r=>fmt(r.pts,1)},
-    {k:'reb',h:'REB',v:r=>r.reb,f:r=>fmt(r.reb,1),cls:r=>flagCls(r,'reb')},
-    {k:'ast',h:'AST',v:r=>r.ast,f:r=>fmt(r.ast,1),cls:r=>flagCls(r,'ast')},
-    {k:'threes',h:'3PM',v:r=>r.threes,f:r=>fmt(r.threes,1),cls:r=>flagCls(r,'threes')},
-    {k:'stl',h:'STL',v:r=>r.stl,f:r=>fmt(r.stl,2),cls:r=>flagCls(r,'stl')},
-    {k:'blk',h:'BLK',v:r=>r.blk,f:r=>fmt(r.blk,2),cls:r=>flagCls(r,'blk')},
-    {k:'tov',h:'TOV',v:r=>r.tov,f:r=>fmt(r.tov,1),cls:()=>'mute'},
+    {k:'reb',h:'REB',v:r=>r.reb,f:r=>fmt(r.reb,1),cls:r=>srcCls(r,'reb')},
+    {k:'ast',h:'AST',v:r=>r.ast,f:r=>fmt(r.ast,1),cls:r=>srcCls(r,'ast')},
+    {k:'threes',h:'3PM',v:r=>r.threes,f:r=>fmt(r.threes,1),cls:r=>srcCls(r,'threes')},
+    {k:'stl',h:'STL',v:r=>r.stl,f:r=>fmt(r.stl,2),cls:r=>srcCls(r,'stl')},
+    {k:'blk',h:'BLK',v:r=>r.blk,f:r=>fmt(r.blk,2),cls:r=>srcCls(r,'blk')},
+    {k:'tov',h:'TOV',v:r=>r.tov,f:r=>fmt(r.tov,1),cls:r=>srcCls(r,'tov')},
     {k:'p_dd',h:'DD%',v:r=>r.p_dd,f:r=>Math.round(r.p_dd*100)},
     {k:'p_td',h:'TD%',v:r=>r.p_td,f:r=>fmt(r.p_td*100,1)},
     {k:'n_mkts',h:'Mkts',v:r=>r.n_mkts},
     {k:'pts_spread',h:'Best PTS sprd',tip:'Tightest points rung between 15% and 85%',v:r=>r.pts_spread,cls:r=>spClass(r.pts_spread),f:r=>fmt(r.pts_spread,1)+'¢'},
   ];
   table(cols,rows,'proj',r=>openPlayer(r,ds));
-  $('note').textContent=`Kalshi-only fit: each stat mean is fit to every ladder rung with spread 20¢ or less, weighted by tightness. Gray values are defaults or estimates (no market). TOV has no market and is estimated from PTS and AST. DK scoring with DD +1.5 and TD +3 stacked. Salaries: ${S.latest.salaries||'none'}.`;
+  $('note').textContent=`Plain values come from Kalshi ladders (rungs with spread 20¢ or less, weighted by tightness) or are backed out of combo markets. Blue italic = no market: per-minute rate (this season blended with last, low-minute players topped up with positional averages) times projected minutes. Gray = positional default, used only when no ESPN stats exist. TOV has no market and always comes from rate x minutes. DK scoring with DD +1.5 and TD +3 stacked. Salaries: ${S.latest.salaries||'none'}. Stats: ${S.latest.stats||'none'}.`;
 }
-const flagCls=(r,s)=>(r.flags||[]).some(f=>f.startsWith(s+' default'))?'mute':'';
+// market or combo = plain; rate x minutes = italic; positional default or formula = gray
+const srcCls=(r,s)=>{const v=(r.src||{})[s];if(v==='rate')return 'est';if(v==='default'||v==='formula')return 'mute';
+  if(!r.src&&(r.flags||[]).some(f=>f.startsWith(s+' default')))return 'mute';return ''};
 
 function renderMovers(ds){
   const rows=filtered(ds.markets).filter(m=>m.dmid!=null&&m.dmid!==0).map(m=>({...m,absd:Math.abs(m.dmid)}));
@@ -348,8 +353,9 @@ $('csv').onclick=()=>{
   const strip=s=>String(s).replace(/<[^>]*>/g,'').replace(/&amp;/g,'&').trim();
   let lines;
   if(S.view==='proj'){
-    lines=[['Name','ID','Team','Pos','Salary','DK_Proj','Value','PTS','REB','AST','3PM','STL','BLK','TOV','P_DD','P_TD','Tier','Flags'].join(',')]
-      .concat(S.rows.map(r=>[r.player,r.dk_id??'',r.team,r.pos,r.salary??'',r.dk,r.value??'',r.pts,r.reb,r.ast,r.threes,r.stl,r.blk,r.tov,r.p_dd,r.p_td,r.tier,(r.flags||[]).join('; ')].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')));
+    const SS=['reb','ast','threes','stl','blk','tov'];
+    lines=[['Name','ID','Team','Pos','Salary','DK_Proj','Value','MIN','MIN_SRC','MPG','PTS','REB','AST','3PM','STL','BLK','TOV','P_DD','P_TD','Tier',...SS.map(s=>(s==='threes'?'3PM':s.toUpperCase())+'_SRC'),'Flags'].join(',')]
+      .concat(S.rows.map(r=>[r.player,r.dk_id??'',r.team,r.pos,r.salary??'',r.dk,r.value??'',r.min??'',r.min_src??'',r.mpg??'',r.pts,r.reb,r.ast,r.threes,r.stl,r.blk,r.tov,r.p_dd,r.p_td,r.tier,...SS.map(s=>(r.src||{})[s]||''),(r.flags||[]).join('; ')].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')));
   }else{
     lines=[cols.map(c=>c.h).join(',')].concat(S.rows.map(r=>cols.map(c=>`"${strip(c.f?c.f(r):c.v(r)??'').replace(/"/g,'""')}"`).join(',')));
   }
